@@ -1,0 +1,41 @@
+---
+- name: Cordon node
+  command: kubectl cordon {{ inventory_hostname }}
+  delegate_to: "{{groups['kube-master'][0]}}"
+
+- name: Drain node
+  command: kubectl drain --force --ignore-daemonsets --delete-local-data {{ inventory_hostname }}
+  delegate_to: "{{groups['kube-master'][0]}}"
+
+- name: Sleep for grace period for draining
+  pause: seconds=30
+  
+- hosts: all
+  roles:
+    - { role: kubernetes/preinstall, tags: preinstall }
+
+- hosts: etcd
+  serial: 1
+  roles:
+    - { role: etcd, tags: etcd }
+
+- hosts: kube-node
+  serial: 1
+  roles:
+    - { role: etcd, tags: etcd }
+    - { role: upgrade/pre-upgrade, tags: upgrade/pre-upgrade }
+    - { role: kubernetes/node, tags: node }
+    - { role: network_plugin, tags: network }
+    - { role: upgrade/post-upgrade, tags: upgrade/post-upgrade }
+
+- hosts: kube-master
+  serial: 1
+  roles:
+    - { role: etcd, tags: etcd }
+    - { role: kubernetes/node, tags: node }
+    - { role: kubernetes/master, tags: master }
+    
+    
+- name: Uncordon node
+  command: kubectl uncordon {{ inventory_hostname }}
+  delegate_to: "{{groups['kube-master'][0]}}"
